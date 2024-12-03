@@ -1,4 +1,7 @@
+<img src="./Screenshot 2024-12-03 at 16.12.26.png" />
+
 # Real-Time Leaderboard
+
 
 This project implements a real-time leaderboard system using Redis and Node.js for the backend and React for the frontend. The leaderboard updates in real time to reflect score changes and displays the top-ranking players dynamically.
 
@@ -95,22 +98,6 @@ Ensure you have the following installed:
 
 ---
 
-## File Structure
-
-```
-realtime-leaderboard/
-├── server.js           # Node.js backend server
-├── client/             # React frontend
-│   ├── src/
-│   │   ├── App.js      # Main React component
-│   │   ├── Leaderboard.js  # Component to display leaderboard
-│   │   └── index.js    # Entry point for React app
-│   └── package.json    # Frontend dependencies
-├── package.json        # Backend dependencies
-└── README.md           # Project documentation
-```
-
----
 
 ## Environment Variables
 Create a `.env` file in the project root to configure the following variables:
