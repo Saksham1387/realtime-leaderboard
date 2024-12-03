@@ -8,7 +8,7 @@ import { Trophy, Medal, Award, Plus, User, ChevronLeft, ChevronRight } from 'luc
 import { useToast } from '@/hooks/use-toast'
 
 // Configuration - adjust to match your server
-const SOCKET_SERVER_URL = "http://ec2-43-205-138-84.ap-south-1.compute.amazonaws.com:8080"
+const SOCKET_SERVER_URL = import.meta.env.VITE_SERVER_URL
 const PLAYERS_PER_PAGE = 15
 
 // Player interface
