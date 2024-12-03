@@ -144,7 +144,12 @@ export default function LeaderboardApp() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-5">
+        <div className='mb-5 text-gray-500'>
+        <h1>This project is running on a free instance of redis and the backend is deployed on the render</h1>
+        <h1>This is just to try how much load can it handle</h1>
+        <h1>Here redis ZSET's have been used</h1>
+        </div>
       <Card className="w-full max-w-2xl mx-auto">
         <CardHeader>
           <CardTitle className="text-3xl font-bold text-center">Leaderboard</CardTitle>
