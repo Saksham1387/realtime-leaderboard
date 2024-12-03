@@ -102,6 +102,11 @@ class Leaderboard {
     private setupRoutes(): void {
         // Player creation route
         this.app.post('/player', this.createPlayerHandler.bind(this));
+        this.app.get('/health',(req,res)=>{
+            res.status(200).json({
+                message:"server healthy"
+            })
+        })
     }
 
     // Separate handler method for route
