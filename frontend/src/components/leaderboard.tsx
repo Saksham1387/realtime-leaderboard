@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect } from 'react'
-import io from 'socket.io-client'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,7 +7,8 @@ import { Trophy, Medal, Award, Plus, User, ChevronLeft, ChevronRight } from 'luc
 import { useToast } from '@/hooks/use-toast'
 
 // Configuration - adjust to match your server
-const SOCKET_SERVER_URL = import.meta.env.VITE_SERVER_URL
+const WS_SERVER_URL = import.meta.env.VITE_SERVER_URL
+const HTTP_SERVER_URL = import.meta.env.VITE_SERVER_URL
 const PLAYERS_PER_PAGE = 15
 
 // Player interface
@@ -22,32 +22,56 @@ export default function LeaderboardApp() {
   // State management
   const [players, setPlayers] = useState<Player[]>([])
   const [newPlayerName, setNewPlayerName] = useState<string>('')
-  const [socket, setSocket] = useState<any>(null)
+  const [socket, setSocket] = useState<WebSocket | null>(null)
   const [currentPage, setCurrentPage] = useState<number>(1)
   const { toast } = useToast()
 
-  // Connect to socket on component mount
+  // Connect to WebSocket on component mount
   useEffect(() => {
-    // Create socket connection
-    const newSocket = io(SOCKET_SERVER_URL)
+    // Create WebSocket connection
+    const newSocket = new WebSocket(WS_SERVER_URL)
     setSocket(newSocket)
 
     // Listen for leaderboard updates
-    newSocket.on('leaderboard:update', (updatedPlayers: Player[]) => {
-      // Sort players by score in descending order
-      const sortedPlayers = updatedPlayers.sort((a, b) => b.score - a.score)
-      setPlayers(sortedPlayers)
-      
-      // Reset to first page if current page is out of bounds
-      const totalPages = Math.ceil(sortedPlayers.length / PLAYERS_PER_PAGE)
-      if (currentPage > totalPages) {
-        setCurrentPage(totalPages || 1)
+    newSocket.addEventListener('message', (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        
+        // Check for leaderboard update message
+        if (message.type === 'leaderboard:update') {
+          // Sort players by score in descending order
+          const sortedPlayers = message.data.sort((a: Player, b: Player) => b.score - a.score)
+          setPlayers(sortedPlayers)
+          
+          // Reset to first page if current page is out of bounds
+          const totalPages = Math.ceil(sortedPlayers.length / PLAYERS_PER_PAGE)
+          if (currentPage > totalPages) {
+            setCurrentPage(totalPages || 1)
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing message:', error)
       }
+    })
+
+    // Handle WebSocket connection open
+    newSocket.addEventListener('open', () => {
+      console.log('WebSocket connection established')
+    })
+
+    // Handle WebSocket errors
+    newSocket.addEventListener('error', (error) => {
+      console.error('WebSocket error:', error)
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to the server",
+        variant: "destructive",
+      })
     })
 
     // Cleanup on unmount
     return () => {
-      newSocket.disconnect()
+      newSocket.close()
     }
   }, [])
 
@@ -68,17 +92,9 @@ export default function LeaderboardApp() {
       })
       return
     }
-    const newPlayer: Player = {
-        playerId: newPlayerName,
-        score: 0
-      }
 
     try {
-        const updatedPlayers = [...players, newPlayer].sort((a, b) => b.score - a.score)
-        setPlayers(updatedPlayers)
-
-      // Add player via HTTP request
-      const response = await fetch(`${SOCKET_SERVER_URL}/player`, {
+      const response = await fetch(`${HTTP_SERVER_URL}/player`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -92,6 +108,14 @@ export default function LeaderboardApp() {
       if (!response.ok) {
         throw new Error('Failed to add player')
       }
+
+      // Add player optimistically to local state
+      const newPlayer: Player = {
+        playerId: newPlayerName,
+        score: 0
+      }
+      const updatedPlayers = [...players, newPlayer].sort((a, b) => b.score - a.score)
+      setPlayers(updatedPlayers)
 
       // Clear input after adding
       setNewPlayerName('')
@@ -111,11 +135,20 @@ export default function LeaderboardApp() {
 
   // Increase player score
   const handleIncreaseScore = (playerId: string) => {
-    if (socket) {
-      // Emit score update via socket
-      socket.emit('player:update-score', {
-        playerId,
-        scoreIncrement: 10 // Can be adjusted
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      // Send score update via WebSocket
+      socket.send(JSON.stringify({
+        type: 'player:update-score',
+        data: {
+          playerId,
+          scoreIncrement: 10 // Can be adjusted
+        }
+      }))
+    } else {
+      toast({
+        title: "Connection Error",
+        description: "Unable to update score. Check your connection.",
+        variant: "destructive",
       })
     }
   }
@@ -145,11 +178,11 @@ export default function LeaderboardApp() {
 
   return (
     <div className="container mx-auto px-4 py-5">
-        <div className='mb-5 text-gray-500'>
+      <div className='mb-5 text-gray-500'>
         <h1>This project is running on a free instance of redis and the backend is deployed on the render</h1>
         <h1>This is just to try how much load can it handle</h1>
         <h1>Here redis ZSET's have been used</h1>
-        </div>
+      </div>
       <Card className="w-full max-w-2xl mx-auto">
         <CardHeader>
           <CardTitle className="text-3xl font-bold text-center">Leaderboard</CardTitle>

@@ -1,7 +1,7 @@
 import Redis, { Redis as RedisClient } from "ioredis";
 import express, { Request, Response, NextFunction } from "express";
 import http from "http";
-import { Server as SocketIOServer } from "socket.io";
+import WebSocket, { WebSocketServer } from "ws";
 import dotenv from "dotenv";
 
 // Load environment variables
@@ -13,10 +13,6 @@ interface Player {
   score: number;
 }
 
-interface ScoreUpdateData {
-  playerId: string;
-  scoreIncrement: number;
-}
 
 class Leaderboard {
   private redisClient: RedisClient;
@@ -24,26 +20,21 @@ class Leaderboard {
   private subClient: RedisClient;
   private app: express.Application;
   private server: http.Server;
-  private io: SocketIOServer;
+  private wss: WebSocketServer;
   private LEADERBOARD_KEY = "game:leaderboard";
 
   constructor() {
     const redisURL = process.env.REDIS_URL || "redis://localhost:6379";
     this.redisClient = new Redis(redisURL);
-
     this.pubClient = new Redis(redisURL);
-
     this.subClient = new Redis(redisURL);
 
-    // Create Express app
+    // Create Express app and HTTP server
     this.app = express();
     this.server = http.createServer(this.app);
-    this.io = new SocketIOServer(this.server, {
-      cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-      },
-    });
+    
+    // Create WebSocket server
+    this.wss = new WebSocketServer({ server: this.server });
 
     this.setupErrorHandlers();
     this.setupMiddleware();
@@ -87,6 +78,7 @@ class Leaderboard {
 
   private setupRoutes(): void {
     this.app.post("/player", this.createPlayerHandler.bind(this));
+    // For health check
     this.app.get("/health", (req, res) => {
       res.status(200).json({
         message: "server healthy",
@@ -156,39 +148,48 @@ class Leaderboard {
     return formattedPlayers;
   }
 
-  async getPlayerRank(playerId: string): Promise<number | null> {
-    const rank = await this.redisClient.zrevrank(
-      this.LEADERBOARD_KEY,
-      playerId
-    );
-    return rank !== null ? rank + 1 : null;
-  }
-
   private setupWebSocketHandlers(): void {
-    this.io.on("connection", async (socket) => {
+    this.wss.on("connection", async (ws: WebSocket) => {
       console.log("New client connected");
 
       try {
         const topPlayers = await this.getTopPlayers();
-        socket.emit("leaderboard:update", topPlayers);
+        ws.send(JSON.stringify({
+          type: "leaderboard:update",
+          data: topPlayers
+        }));
       } catch (error) {
         console.error("Failed to fetch leaderboard:", error);
       }
 
-      socket.on("player:update-score", async (data: ScoreUpdateData) => {
+      ws.on("message", async (message: string) => {
         try {
-          const { playerId, scoreIncrement } = data;
+          const parsedMessage = JSON.parse(message);
 
-          await this.updateScore(playerId, scoreIncrement);
+          if (parsedMessage.type === "player:update-score") {
+            const { playerId, scoreIncrement } = parsedMessage.data;
 
-          const updatedTopPlayers = await this.getTopPlayers();
-          this.io.emit("leaderboard:update", updatedTopPlayers);
+            await this.updateScore(playerId, scoreIncrement);
+
+            const updatedTopPlayers = await this.getTopPlayers();
+            
+            // Broadcast to all connected clients
+            //@ts-ignore
+            this.wss.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({
+                  type: "leaderboard:update",
+                  data: updatedTopPlayers
+                }));
+              }
+            });
+          }
         } catch (error) {
           console.error("Score update failed:", error);
         }
       });
 
-      socket.on("disconnect", () => {
+      ws.on("close", () => {
         console.log("Client disconnected");
       });
     });
